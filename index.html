@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Carrom Pool - Pro</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;touch-action:none}
+  body{background:#0f172a;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;overflow:hidden}
+  h1{color:white;margin:10px;font-size:22px;letter-spacing:2px}
+  #gameBox{position:relative;width:95vw;max-width:420px;aspect-ratio:1/1;background:#fde68a;border:12px solid #78350f;border-radius:8px;box-shadow:0 0 30px rgba(0,0,0,0.5)}
+  canvas{width:100%;height:100%;display:block;cursor:pointer}
+  #ui{display:flex;justify-content:space-between;width:95vw;max-width:420px;margin-top:12px;color:white}
+  #powerBar{width:100px;height:10px;background:#334155;border-radius:5px;overflow:hidden}
+  #powerFill{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#ef4444);transition:width 0.05s}
+  button{background:#f59e0b;color:black;border:none;padding:10px 20px;border-radius:20px;font-weight:bold;margin-top:10px}
+</style>
+</head>
+<body>
+<h1>CARROM POOL 🎯</h1>
+<div id="gameBox"><canvas id="c"></canvas></div>
+<div id="ui">
+  <div>Score: <span id="score">0</span></div>
+  <div id="powerBar"><div id="powerFill"></div></div>
+  <div>Potted: <span id="potted">0/9</span></div>
+</div>
+<button onclick="reset()">🔄 NEW GAME</button>
+
+<script>
+const canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
+const W=400, H=400; canvas.width=W; canvas.height=H;
+let coins=[], striker, score=0, pottedCount=0, isAiming=false, aimStart=null, power=0;
+
+class Coin{
+  constructor(x,y,color,type){
+    this.x=x;this.y=y;this.vx=0;this.vy=0;this.r=type==='queen'?11:12;this.color=color;this.type=type;this.inPocket=false;
+  }
+  update(){
+    if(this.inPocket) return;
+    this.x+=this.vx; this.y+=this.vy;
+    this.vx*=0.985; this.vy*=0.985;
+    if(Math.abs(this.vx)<0.05) this.vx=0; if(Math.abs(this.vy)<0.05) this.vy=0;
+    if(this.x-this.r<15){this.x=15+this.r;this.vx*=-0.7}
+    if(this.x+this.r>W-15){this.x=W-15-this.r;this.vx*=-0.7}
+    if(this.y-this.r<15){this.y=15+this.r;this.vy*=-0.7}
+    if(this.y+this.r>H-15){this.y=H-15-this.r;this.vy*=-0.7}
+    const pockets=[[18,18],[382,18],[18,382],[382,382]];
+    for(let p of pockets){
+      let dx=this.x-p[0], dy=this.y-p[1], d=Math.sqrt(dx*dx+dy*dy);
+      if(d<26){this.inPocket=true; if(this.type!=='striker'){pottedCount++; score+=this.type==='queen'?50:10; updateUI();} if(pottedCount>=9) setTimeout(()=>alert('WIN! Score: '+score),200); }
+    }
+  }
+  draw(){
+    if(this.inPocket) return;
+    ctx.beginPath(); ctx.fillStyle=this.color; ctx.shadowColor='rgba(0,0,0,0.3)'; ctx.shadowBlur=4;
+    ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+    if(this.type==='queen'){ctx.fillStyle='white'; ctx.beginPath(); ctx.arc(this.x,this.y,3,0,Math.PI*2); ctx.fill();}
+  }
+}
+
+function init(){
+  coins=[]; pottedCount=0; score=0;
+  const cx=W/2, cy=H/2;
+  coins.push(new Coin(cx,cy,'#ef4444','queen'));
+  const positions=[[0,-28],[0,28],[-24,-14],[-24,14],[24,-14],[24,14],[-12,-24],[12,24]];
+  const colors=['#111','#fff','#111','#fff','#111','#fff','#111','#fff'];
+  positions.forEach((p,i)=>coins.push(new Coin(cx+p[0],cy+p[1],colors[i],colors[i]==='#111'?'black':'white')));
+  striker=new Coin(W/2, 340, '#1e3a8a','striker'); striker.r=14; coins.push(striker);
+  updateUI();
+}
+
+function updateUI(){document.getElementById('score').innerText=score; document.getElementById('potted').innerText=pottedCount+'/9';}
+
+function collide(a,b){
+  if(a.inPocket||b.inPocket) return;
+  let dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy);
+  if(d<a.r+b.r && d>0){
+    let nx=dx/d, ny=dy/d, overlap=(a.r+b.r-d)/2;
+    a.x-=nx*overlap; a.y-=ny*overlap; b.x+=nx*overlap; b.y+=ny*overlap;
+    let dvx=a.vx-b.vx, dvy=a.vy-b.vy, dot=dvx*nx+dvy*ny;
+    if(dot>0){let imp=dot; a.vx-=imp*nx; a.vy-=imp*ny; b.vx+=imp*nx; b.vy+=imp*ny;}
+  }
+}
+
+canvas.addEventListener('pointerdown',e=>{
+  const rect=canvas.getBoundingClientRect(), x=(e.clientX-rect.left)*(W/rect.width), y=(e.clientY-rect.top)*(H/rect.height);
+  let dx=x-striker.x, dy=y-striker.y;
+  if(Math.sqrt(dx*dx+dy*dy)<30){isAiming=true; aimStart={x,y};}
+});
+canvas.addEventListener('pointermove',e=>{
+  if(!isAiming) return;
+  const rect=canvas.getBoundingClientRect(), x=(e.clientX-rect.left)*(W/rect.width), y=(e.clientY-rect.top)*(H/rect.height);
+  let dx=aimStart.x-x, dy=aimStart.y-y, dist=Math.min(Math.sqrt(dx*dx+dy*dy),80);
+  power=dist/80*100; document.getElementById('powerFill').style.width=power+'%';
+  striker.aim={dx:dx/dist, dy:dy/dist, dist};
+});
+canvas.addEventListener('pointerup',e=>{
+  if(!isAiming) return; isAiming=false;
+  if(striker.aim && striker.aim.dist>10){
+    striker.vx=striker.aim.dx*striker.aim.dist*0.25; striker.vy=striker.aim.dy*striker.aim.dist*0.25;
+  }
+  striker.aim=null; power=0; document.getElementById('powerFill').style.width='0%';
+});
+
+function loop(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#fbbf24'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#92400e'; ctx.lineWidth=2; ctx.strokeRect(15,15,W-30,H-30);
+  ctx.fillStyle='black'; [[18,18],[382,18],[18,382],[382,382]].forEach(p=>{ctx.beginPath(); ctx.arc(p[0],p[1],18,0,Math.PI*2); ctx.fill();});
+  coins.forEach(c=>c.update());
+  for(let i=0;i<coins.length;i++) for(let j=i+1;j<coins.length;j++) collide(coins[i],coins[j]);
+  coins.forEach(c=>c.draw());
+  if(isAiming && striker.aim){
+    ctx.beginPath(); ctx.strokeStyle='rgba(255,255,255,0.8)'; ctx.setLineDash([6,6]); ctx.lineWidth=2;
+    ctx.moveTo(striker.x,striker.y); ctx.lineTo(striker.x+striker.aim.dx*120, striker.y+striker.aim.dy*120); ctx.stroke(); ctx.setLineDash([]);
+  }
+  requestAnimationFrame(loop);
+}
+function reset(){init();}
+init(); loop();
+</script>
+</body>
+  </html>
